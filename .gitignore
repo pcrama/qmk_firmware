@@ -120,3 +120,7 @@ compile_commands.json
 via*.json
 /keyboards/**/keymaps/via/*
 /keyboards/**/keymaps/vial/*
+
+# Files marking directory as not needing backups
+CACHEDIR.TAG
+_no_offsite_backup
