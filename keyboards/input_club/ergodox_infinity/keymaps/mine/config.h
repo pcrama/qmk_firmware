@@ -15,6 +15,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#include "keyboards/input_club/ergodox_infinity/config.h"
+#define SERIAL_USART_SPEED 115200
 
 #define MK_COMBINED
+
+#include "keyboards/input_club/ergodox_infinity/config.h"
