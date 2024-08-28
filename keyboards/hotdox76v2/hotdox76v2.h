@@ -6,4 +6,4 @@
 
 #include "quantum.h"
 
-#define TOG_OLED KC_F13
+#define TOG_OLED KC_F21
