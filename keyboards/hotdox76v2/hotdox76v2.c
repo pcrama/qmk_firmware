@@ -62,14 +62,14 @@ led_config_t g_led_config = {
 
 #    define UNC (94 + 0x21)
 typedef struct _master_to_slave_t {
-    int  cur_alp_index;
-    char current_alp[7];
+    uint8_t cur_alp_index;  // 2 top most bits reserved for mode
+    char    current_alp[7];
 } master_to_slave_t;
 master_to_slave_t m2s;
 
 typedef struct _slave_to_master_t {
-    int  cur_alp_index;
-    char current_alp[7];
+    uint8_t cur_alp_index;  // 2 top most bits reserved for mode
+    char    current_alp[7];
 } slave_to_master_t;
 slave_to_master_t s2m;
 
@@ -97,15 +97,11 @@ oled_rotation_t oled_init_kb(oled_rotation_t rotation) {
     }
 }
 
-void render_logo(void) {
+void render_logo(uint8_t offset) {
     uint8_t i = 0, j = 0;
     for (i = 0; i < 4; ++i) {
         for (j = 0; j < 32; ++j) {
-            if (is_keyboard_left()) {
-                oled_write_raw_byte(pgm_read_byte(&logo_mouse[i * 32 + j]), i * 128 + j);
-            } else {
-                oled_write_raw_byte(pgm_read_byte(&logo_mouse[i * 32 + j]), i * 128 + j + 96);
-            }
+            oled_write_raw_byte(pgm_read_byte(&logo_mouse[i * 32 + j]), i * 128 + j + offset);
         }
     }
 }
@@ -127,24 +123,6 @@ void render_layer_helper_fun(uint8_t start_line, const char *data, uint8_t gap_w
         oled_write_raw_byte(pgm_read_byte(&blank_block), start_line * 2 * 128 + 128 + 32 + gap_w + l * 12 + j);
     }
 }
-void render_layer(uint8_t layer) {
-    render_layer_helper_fun(0, PSTR("LAYER:"), 12, 6);
-    switch (layer) {
-        case 0:
-            render_layer_helper_fun(1, PSTR("1:HOME"), 12, 6);
-            break;
-        case 1:
-            render_layer_helper_fun(1, PSTR("2:CODE"), 12, 6);
-            break;
-        case 2:
-            render_layer_helper_fun(1, PSTR("3:OFFICE"), 0, 8);
-            break;
-        case 3:
-        default:
-            render_layer_helper_fun(1, PSTR("4:OTHERS"), 0, 8);
-            break;
-    }
-}
 
 void render_cur_input_helper_fun(uint8_t start_line, const char *data, uint8_t gap_w, uint8_t l) {
     uint8_t j = 0, k = 0;
@@ -164,7 +142,37 @@ void render_cur_input_helper_fun(uint8_t start_line, const char *data, uint8_t g
     }
 }
 
-void render_cur_input(void) {
+void render_layer(uint8_t layer) {
+    // Host Keyboard LED Status
+    led_t led_state = host_keyboard_led_state();
+    if (led_state.num_lock) {
+        if (led_state.caps_lock) {
+            render_layer_helper_fun(0, PSTR("NumCap"), 12, 6);
+        } else {
+            render_layer_helper_fun(0, PSTR("Num\x7f\x7f\x7f"), 12, 6);
+        }
+    } else if (led_state.caps_lock) {
+        render_layer_helper_fun(0, PSTR("\x7f\x7f\x7f" "Cap"), 12, 6);
+    } else {
+        render_layer_helper_fun(0, PSTR("\x7f\x7f\x7f\x7f\x7f\x7f"), 12, 6);}
+    switch (layer) {
+        case 0:
+            render_layer_helper_fun(1, PSTR("0:HOME"), 12, 6);
+            break;
+        case 1:
+            render_layer_helper_fun(1, PSTR("1:FUNC"), 12, 6);
+            break;
+        case 2:
+            render_layer_helper_fun(1, PSTR("2:MOUSE"), 6, 7);
+            break;
+        case 3:
+        default:
+            render_layer_helper_fun(1, PSTR("3:OTHERS"), 0, 8);
+            break;
+    }
+}
+
+void render_cur_input_mode_00(void) {
     render_cur_input_helper_fun(0, "INPUTS:", 6, 7);
     if (is_keyboard_master()) {
         render_cur_input_helper_fun(1, (const char *)(m2s.current_alp), 12, 6);
@@ -174,15 +182,43 @@ void render_cur_input(void) {
     return;
 }
 
+void render_cur_input_mode_01(void) {
+    render_cur_input_helper_fun(0, "MASKED:", 6, 7);
+    render_cur_input_helper_fun(1, "[****]", 12, 6);
+}
+
+uint8_t hash_cur_input(void) {
+  uint8_t hash = 0;
+  size_t limit = (size_t) ((is_keyboard_master() ? m2s.cur_alp_index : s2m.cur_alp_index) & 0x3f);
+  const char *p = (is_keyboard_master() ? m2s.current_alp : s2m.current_alp);
+  while (limit--) { hash ^= *p++; }
+  return hash;
+}
+
 bool oled_task_kb(void) {
     if (!oled_task_user()) {
         return false;
     }
-    render_logo();
     if (is_keyboard_left()) {
+        render_logo(0);
         render_layer(biton32(layer_state));
     } else {
-        render_cur_input();
+        switch ((is_keyboard_master() ? m2s.cur_alp_index : s2m.cur_alp_index) >> 6) {
+        case 3:
+        case 2:
+            oled_clear();
+            render_logo(hash_cur_input() % 96);
+            break;
+        case 1:
+            render_logo(96);
+            render_cur_input_mode_01();
+            break;
+        case 0:
+        default:
+            render_logo(96);
+            render_cur_input_mode_00();
+            break;
+        }
     }
     return false;
 }
@@ -211,17 +247,18 @@ void get_cur_alp_hook(uint16_t keycode) {
     if (keycode >= 0xF0) {
         keycode = 0xF0;
     }
-    if (m2s.cur_alp_index < 4) {
-        m2s.current_alp[m2s.cur_alp_index] = pgm_read_byte(&code_to_name[keycode]);
-        if (m2s.cur_alp_index == 1) {
+    uint8_t alp_index = m2s.cur_alp_index & 0x3f;
+    if (alp_index < 4) {
+        m2s.current_alp[alp_index] = pgm_read_byte(&code_to_name[keycode]);
+        if (alp_index == 1) {
             m2s.current_alp[2] = m2s.current_alp[3] = m2s.current_alp[4] = UNC;
         }
-        m2s.cur_alp_index++;
+        m2s.cur_alp_index = (m2s.cur_alp_index & 0xc0) | (alp_index + 1);
     } else {
         for (uint8_t i = 2; i <= 4; ++i) {
             m2s.current_alp[i - 1] = m2s.current_alp[i];
         }
-        m2s.current_alp[m2s.cur_alp_index] = pgm_read_byte(&code_to_name[keycode]);
+        m2s.current_alp[alp_index] = pgm_read_byte(&code_to_name[keycode]);
     }
 }
 
@@ -233,13 +270,14 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
         return false;
     }
     switch (keycode) {
-        case TOG_OLED:
-            if (record->event.pressed) {
-                if (is_oled_on()) {
-                    oled_off();
-                } else {
-                    oled_on();
-                }
+        case TOG_MASK_INPUT:
+            if (is_keyboard_master() && record->event.pressed) {
+              m2s.cur_alp_index = ((m2s.cur_alp_index + 0x40) & 0xc0) | (m2s.cur_alp_index & 0x3f);
+            }
+            return false;
+        case SHOW_INPUT:
+            if (is_keyboard_master()) {
+                m2s.cur_alp_index = m2s.cur_alp_index & 0x3f;
             }
             return false;
         default:
