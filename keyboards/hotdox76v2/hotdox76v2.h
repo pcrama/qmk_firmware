@@ -6,4 +6,7 @@
 
 #include "quantum.h"
 
-#define TOG_OLED KC_F21
+#ifdef OLED_ENABLE
+enum custom_keycodes_for_hide_show_input { TOG_MASK_INPUT = SAFE_RANGE, SHOW_INPUT };
+#endif
+
