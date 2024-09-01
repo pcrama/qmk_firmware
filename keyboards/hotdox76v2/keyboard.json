@@ -20,9 +20,9 @@
     "rgb_matrix": {
         "animations": {
             "gradient_up_down": true,
-            "gradient_left_right": true,
-            "cycle_left_right": true,
-            "cycle_out_in_dual": true
+            "gradient_left_right": false,
+            "cycle_left_right": false,
+            "cycle_out_in_dual": false
         },
         "center_point": [112, 32],
         "driver": "ws2812",
