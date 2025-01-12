@@ -286,10 +286,6 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-void matrix_scan_kb(void) {
-    matrix_scan_user();
-}
-
 void user_sync_alpa_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
     const master_to_slave_t *m2s_p = (const master_to_slave_t *)in_data;
     s2m.cur_alp_index              = m2s_p->cur_alp_index;
